@@ -1,8 +1,7 @@
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
 from pymodbus.payload import BinaryPayloadBuilder
 from pymodbus.constants import Endian
-from pymodbus.server.sync import StartTcpServer
-from threading import Thread
+from pymodbus.server.sync_threaded import ModbusTcpServer
 
 # define the Modbus server context
 store = ModbusSlaveContext(
@@ -22,7 +21,7 @@ def read_registers(context, address, count):
     return builder.to_registers()
 
 # define a function to handle the client connection
-def handle_client(server, client, address):
+def handle_client(client):
     while True:
         request = client.receive()
         if request:
@@ -31,16 +30,18 @@ def handle_client(server, client, address):
                 register_count = request.count
                 values = read_registers(context, start_address, register_count)
                 response = client.build_response(request, values)
-                server.send(response, address)
+                client.send(response)
 
-# create a new thread to handle the client connection
-def start_server():
-    server = StartTcpServer(context, address=("localhost", 502))
-    while True:
-        client, address = server.accept()
-        client_thread = Thread(target=handle_client, args=(server, client, address))
-        client_thread.daemon = True
-        client_thread.start()
+# create the Modbus TCP server
+server = ModbusTcpServer(context, address=("localhost", 502))
 
 # start the server
-start_server()
+server_thread = server.start()
+print("Server started")
+
+# handle client connections
+while True:
+    client = server.accept()
+    client_thread = Thread(target=handle_client, args=(client,))
+    client_thread.daemon = True
+    client_thread.start()
